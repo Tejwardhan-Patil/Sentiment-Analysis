@@ -1,0 +1,78 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      docker:
+        image: docker:19.03.12
+        options: --privileged
+        ports:
+          - 2375:2375
+        env:
+          DOCKER_TLS_CERTDIR: ""
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.0.5'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r deployment/api/requirements.txt
+
+      - name: Install R dependencies
+        run: |
+          Rscript -e 'install.packages(c("plumber", "glmnet", "randomForest"))'
+          Rscript -e 'if (!requireNamespace("remotes")) install.packages("remotes")'
+          Rscript -e 'remotes::install_deps()'
+
+      - name: Run Python unit tests
+        run: |
+          pytest tests/test_models.py
+
+      - name: Run R unit tests
+        run: |
+          Rscript -e 'testthat::test_dir("tests/")'
+
+      - name: Build Docker image
+        run: |
+          docker build -t sentiment-analysis-api -f deployment/docker/Dockerfile .
+
+      - name: Run Docker container
+        run: |
+          docker run -d -p 5000:5000 sentiment-analysis-api
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Deploy to AWS 
+        run: |
+          python deployment/scripts/deploy_aws.py
+
+      - name: Deploy to GCP 
+        run: |
+          python deployment/scripts/deploy_gcp.py

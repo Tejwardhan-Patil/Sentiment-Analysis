@@ -1,0 +1,51 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Set up R
+      uses: r-lib/actions/setup-r@v2
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r deployment/api/requirements.txt
+
+    - name: Install R dependencies
+      run: |
+        Rscript -e "install.packages('devtools')"
+        Rscript -e "devtools::install_deps(dependencies = TRUE)"
+        Rscript deployment/api/packages.R
+
+    - name: Deploy on AWS
+      run: |
+        python deployment/scripts/deploy_aws.py
+
+    - name: Deploy on GCP
+      run: |
+        python deployment/scripts/deploy_gcp.py
+
+    - name: Docker login
+      run: |
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+    - name: Build and push Docker image
+      run: |
+        docker build -t website.com/sentiment-analysis:latest -f deployment/docker/Dockerfile .
+        docker push website.com/sentiment-analysis:latest

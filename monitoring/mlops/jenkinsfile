@@ -1,0 +1,93 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'docker-image:latest'
+        AWS_CREDENTIALS = credentials('aws_credentials')
+        GCP_CREDENTIALS = credentials('gcp_credentials')
+        SLACK_WEBHOOK = credentials('slack_webhook')
+        MONITORING_SCRIPT = 'monitor.py'
+        AWS_DEPLOYMENT_SCRIPT = 'deploy_aws.py'
+        GCP_DEPLOYMENT_SCRIPT = 'deploy_gcp.py'
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git 'https://github.com/org/sentiment-analysis.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build(DOCKER_IMAGE)
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                script {
+                    docker.image(DOCKER_IMAGE).inside {
+                        sh 'python3 -m unittest discover tests/'
+                        sh 'Rscript tests/test_models.R'
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to AWS and GCP') {
+            parallel {
+                stage('Deploy to AWS') {
+                    when {
+                        expression { return params.DEPLOY_TO_AWS }
+                    }
+                    steps {
+                        script {
+                            docker.image(DOCKER_IMAGE).inside {
+                                withCredentials([AWS_CREDENTIALS]) {
+                                    sh "python3 deployment/scripts/${AWS_DEPLOYMENT_SCRIPT}"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                stage('Deploy to GCP') {
+                    when {
+                        expression { return params.DEPLOY_TO_GCP }
+                    }
+                    steps {
+                        script {
+                            docker.image(DOCKER_IMAGE).inside {
+                                withCredentials([GCP_CREDENTIALS]) {
+                                    sh "python3 deployment/scripts/${GCP_DEPLOYMENT_SCRIPT}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Monitor Metrics') {
+            steps {
+                script {
+                    docker.image(DOCKER_IMAGE).inside {
+                        sh "python3 monitoring/metrics/${MONITORING_SCRIPT}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            slackSend (channel: '#ci-cd', color: 'good', message: "Multi-cloud Build and Deployment succeeded: ${env.BUILD_URL}")
+        }
+        failure {
+            slackSend (channel: '#ci-cd', color: 'danger', message: "Multi-cloud Build or Deployment failed: ${env.BUILD_URL}")
+        }
+    }
+}

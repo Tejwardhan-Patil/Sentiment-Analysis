@@ -1,0 +1,238 @@
+```r
+---
+title: "Exploratory Data Analysis (EDA)"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: true
+    toc_float: true
+    number_sections: true
+---
+
+# Introduction
+
+This EDA provides analysis of the sentiment analysis dataset, including the following:
+- Data loading
+- Statistical summaries and distributions
+- Detailed visualizations
+- Sentiment analysis over time and correlations
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(knitr)
+library(reshape2)
+library(wordcloud2)
+library(tm)
+library(SnowballC)
+library(gridExtra)
+library(lubridate)
+```
+
+## Data Loading
+
+```{r load-data, echo=TRUE}
+# Load raw and processed data
+raw_data <- read_csv("data/raw/text_data.csv")
+processed_data <- read_csv("data/processed/text_data_cleaned.csv")
+annotations <- read_csv("data/annotations/annotations.csv")
+
+# Display first few rows
+kable(head(processed_data))
+kable(head(annotations))
+```
+
+## Data Overview
+
+```{r summary-stats, echo=TRUE}
+# Summary statistics of processed data
+summary(processed_data)
+
+# Checking the distribution of sentiment labels in the annotations
+table(annotations$sentiment)
+```
+
+### Variable Descriptions
+
+```{r variable-descriptions, echo=TRUE}
+# Displaying the structure of the datasets
+str(processed_data)
+str(annotations)
+
+# Checking for unique values in key columns
+kable(table(processed_data$source))
+kable(table(annotations$sentiment))
+```
+
+## Missing Values Analysis
+
+```{r missing-data, echo=TRUE}
+# Checking for missing values in the processed data
+missing_data <- processed_data %>%
+  summarise_all(~sum(is.na(.)))
+
+# Display the missing data summary
+kable(missing_data)
+
+# Visualizing missing values
+library(Amelia)
+missmap(processed_data, main = "Missing Values in Processed Data", col = c("red", "blue"), legend = TRUE)
+```
+
+## Data Distributions
+
+### Word Count Distribution
+
+```{r word-count, echo=TRUE, fig.width=7, fig.height=5}
+# Calculate word counts in the processed text data
+processed_data$word_count <- sapply(strsplit(processed_data$text, " "), length)
+
+# Plot the distribution of word counts
+ggplot(processed_data, aes(x = word_count)) +
+  geom_histogram(bins = 30, fill = "lightblue", color = "black") +
+  labs(title = "Distribution of Word Counts in Processed Data", x = "Word Count", y = "Frequency")
+```
+
+### Sentiment Length Distribution
+
+```{r sentiment-length, echo=TRUE, fig.width=7, fig.height=5}
+# Visualize the length of text per sentiment category
+ggplot(annotations, aes(x = sentiment, y = word_count)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Word Count Distribution by Sentiment", x = "Sentiment", y = "Word Count")
+```
+
+## Word Frequency Analysis
+
+### Creating Corpus and Term-Document Matrix
+
+```{r word-frequencies, echo=TRUE}
+# Tokenize and create a term-document matrix for word frequencies
+corpus <- Corpus(VectorSource(processed_data$text))
+tdm <- TermDocumentMatrix(corpus, control = list(wordLengths = c(3, Inf)))
+
+# Convert TDM to matrix and get word frequencies
+word_freqs <- sort(rowSums(as.matrix(tdm)), decreasing = TRUE)
+word_freqs_df <- data.frame(word = names(word_freqs), freq = word_freqs)
+
+# Display the top 10 most frequent words
+kable(head(word_freqs_df, 10))
+```
+
+### Word Frequency Visualization
+
+```{r word-freq-bar, echo=TRUE, fig.width=7, fig.height=5}
+# Plot the top 20 most frequent words
+top_20_words <- head(word_freqs_df, 20)
+ggplot(top_20_words, aes(x = reorder(word, -freq), y = freq)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  labs(title = "Top 20 Most Frequent Words", x = "Words", y = "Frequency")
+```
+
+### Word Cloud
+
+```{r word-cloud, echo=TRUE, fig.width=7, fig.height=7}
+# Generate word cloud from the processed data
+wordcloud2(word_freqs_df[1:100, ], size = 1)
+```
+
+## Sentiment Distribution
+
+### Sentiment Distribution Across Categories
+
+```{r sentiment-dist, echo=TRUE, fig.width=7, fig.height=5}
+# Plot distribution of sentiment labels
+ggplot(annotations, aes(x = sentiment)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Distribution of Sentiment Labels", x = "Sentiment", y = "Count")
+```
+
+### Sentiment Over Time
+
+```{r sentiment-time, echo=TRUE, fig.width=7, fig.height=5}
+# Convert to date type
+annotations$date <- as.Date(annotations$date)
+
+# Plot sentiment counts over time
+ggplot(annotations, aes(x = date, fill = sentiment)) +
+  geom_histogram(binwidth = 7, position = "stack") +
+  labs(title = "Sentiment Counts Over Time", x = "Date", y = "Count") +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Weekly Sentiment Trend
+
+```{r weekly-sentiment-trend, echo=TRUE, fig.width=7, fig.height=5}
+# Calculate weekly sentiment trends
+annotations$week <- floor_date(annotations$date, "week")
+
+weekly_sentiment <- annotations %>%
+  group_by(week, sentiment) %>%
+  summarise(count = n()) %>%
+  ungroup()
+
+# Plot weekly sentiment trend
+ggplot(weekly_sentiment, aes(x = week, y = count, color = sentiment, group = sentiment)) +
+  geom_line() +
+  labs(title = "Weekly Sentiment Trend", x = "Week", y = "Sentiment Count")
+```
+
+## Correlation Analysis
+
+### Sentiment and Word Count Correlation
+
+```{r sentiment-correlation, echo=TRUE}
+# Checking the correlation between sentiment and word count
+correlation <- cor(annotations$word_count, as.numeric(factor(annotations$sentiment)))
+
+# Print the correlation value
+correlation
+```
+
+### Correlation Heatmap
+
+```{r correlation-heatmap, echo=TRUE}
+# Calculate correlation between numerical features
+numerical_cols <- processed_data %>%
+  select_if(is.numeric)
+
+cor_matrix <- cor(numerical_cols, use = "complete.obs")
+
+# Visualize the correlation matrix
+library(corrplot)
+corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "black")
+```
+
+## Additional Visualizations
+
+### Sentiment by Source
+
+```{r sentiment-source, echo=TRUE, fig.width=7, fig.height=5}
+# Sentiment distribution by data source
+ggplot(processed_data, aes(x = source, fill = sentiment)) +
+  geom_bar(position = "fill") +
+  labs(title = "Sentiment Distribution by Data Source", x = "Source", y = "Proportion")
+```
+
+### Bigram Analysis
+
+```{r bigram-analysis, echo=TRUE, fig.width=7, fig.height=5}
+# Tokenize for bigrams
+bigrams <- processed_data %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2)
+
+# Count the most frequent bigrams
+bigram_counts <- bigrams %>%
+  count(bigram, sort = TRUE)
+
+# Plot the top 10 bigrams
+ggplot(head(bigram_counts, 10), aes(x = reorder(bigram, n), y = n)) +
+  geom_bar(stat = "identity", fill = "purple") +
+  coord_flip() +
+  labs(title = "Top 10 Most Frequent Bigrams", x = "Bigram", y = "Count")
+```

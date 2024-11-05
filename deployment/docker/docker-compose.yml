@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  python_service:
+    build:
+      context: ./deployment/docker
+      dockerfile: Dockerfile
+    container_name: sentiment_analysis_python
+    command: python3 api/app.py
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    depends_on:
+      - r_service
+
+  r_service:
+    build:
+      context: ./deployment/docker
+      dockerfile: Dockerfile
+      args:
+        ENV: R
+    container_name: sentiment_analysis_r
+    command: Rscript api/app.R
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+
+  database:
+    image: postgres:13
+    container_name: sentiment_analysis_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: sentiment_analysis
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:

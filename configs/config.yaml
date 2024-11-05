@@ -1,0 +1,108 @@
+project:
+  name: Sentiment Analysis Project
+  version: 1.0
+  description: End-to-end sentiment analysis pipeline with both Python and R integration.
+
+paths:
+  root_dir: /project/root
+  data_dir: ${paths.root_dir}/data
+  raw_data_dir: ${paths.data_dir}/raw
+  processed_data_dir: ${paths.data_dir}/processed
+  annotations_dir: ${paths.data_dir}/annotations
+  models_dir: ${paths.root_dir}/models
+  experiments_dir: ${paths.root_dir}/experiments
+  deployment_dir: ${paths.root_dir}/deployment
+  api_dir: ${paths.root_dir}/deployment/api
+  utils_dir: ${paths.root_dir}/utils
+  monitoring_dir: ${paths.root_dir}/monitoring
+  logs_dir: ${paths.monitoring_dir}/logging
+  reports_dir: ${paths.root_dir}/reports
+
+python:
+  data_preprocessing:
+    script: ${paths.root_dir}/data/scripts/preprocess.py
+    augmentation_script: ${paths.root_dir}/data/scripts/augment.py
+    split_script: ${paths.root_dir}/data/scripts/split.py
+    stopwords: /stopwords.txt
+
+  model_architectures:
+    lstm: ${paths.models_dir}/architectures/lstm.py
+    bert: ${paths.models_dir}/architectures/bert.py
+    transformer: ${paths.models_dir}/architectures/transformer.py
+    custom_lstm: ${paths.models_dir}/custom/custom_lstm.py
+    hybrid_model: ${paths.models_dir}/custom/hybrid_model.py
+
+  training:
+    script: ${paths.models_dir}/train.py
+    batch_size: 32
+    learning_rate: 0.001
+    epochs: 50
+    optimizer: adam
+    loss_function: cross_entropy
+    metrics: [accuracy, f1_score]
+    device: cuda  # or cpu
+
+  evaluation:
+    script: ${paths.models_dir}/evaluate.py
+    metrics: [accuracy, f1_score, precision, recall]
+    validation_split: 0.2
+    test_split: 0.1
+
+  inference:
+    script: ${paths.models_dir}/inference.py
+    batch_size: 64
+    max_seq_length: 256
+
+r:
+  data_exploration:
+    eda_script: ${paths.data_dir}/scripts/eda.Rmd
+
+  model_implementation:
+    glmnet: ${paths.models_dir}/r_models.R
+    random_forest: ${paths.models_dir}/r_models.R
+
+  evaluation:
+    script: ${paths.models_dir}/evaluate.R
+    metrics: [accuracy, f1_score, precision, recall]
+
+  api:
+    app: ${paths.api_dir}/app.R
+    plumber_script: ${paths.api_dir}/routes.R
+
+docker:
+  dockerfile: ${paths.deployment_dir}/docker/Dockerfile
+  compose_file: ${paths.deployment_dir}/docker/docker-compose.yml
+
+experiments:
+  config_dir: ${paths.experiments_dir}/configs
+  experiment_script: ${paths.experiments_dir}/scripts/run_experiment.py
+  hyperparameter_tuning: 
+    script: ${paths.experiments_dir}/scripts/tune_hyperparameters.py
+    optimizer: optuna
+    parameters:
+      learning_rate: [0.0001, 0.001, 0.01]
+      batch_size: [16, 32, 64]
+      epochs: [20, 50, 100]
+
+monitoring:
+  logger:
+    script: ${paths.monitoring_dir}/logging/logger.py
+    level: INFO
+    log_file: ${paths.logs_dir}/model_logs.log
+
+  metrics_tracking:
+    script: ${paths.monitoring_dir}/metrics/monitor.py
+    interval: daily
+    track_metrics: [accuracy, f1_score, precision, recall]
+
+ci_cd:
+  github_actions:
+    ci: ${paths.root_dir}/.github/workflows/ci.yml
+    cd: ${paths.root_dir}/.github/workflows/cd.yml
+  jenkins:
+    pipeline: ${paths.root_dir}/monitoring/mlops/jenkinsfile
+
+api:
+  app: ${paths.api_dir}/app.py
+  routes: ${paths.api_dir}/routes.py
+  requirements: ${paths.api_dir}/requirements.txt
